@@ -50,6 +50,23 @@ app.post('/api/smart-bin', (req, res) => {
   });
 });
 
+// SIMULATOR DATA SMART BIN
+setInterval(() => {
+  smartBinData.fullness += 5;
+  smartBinData.weight += 0.5;
+
+  if (smartBinData.fullness >= 90) {
+    smartBinData.fullness = 90;
+    smartBinData.status = 'WARNING';
+  } else if (smartBinData.fullness >= 75) {
+    smartBinData.status = 'WARNING';
+  } else {
+    smartBinData.status = 'NORMAL';
+  }
+
+  console.log('Simulator:', smartBinData);
+}, 5000);
+
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Smart Bin API berjalan di port ${PORT}`);
 });
