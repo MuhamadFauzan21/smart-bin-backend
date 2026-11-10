@@ -55,7 +55,7 @@ DATA SMART BIN
 let smartBinData = {
   id: 'SB-001',
   fullness: 50,
-  weight: 2.5,
+  weight: 5.0,
   status: 'NORMAL',
 };
 
@@ -274,9 +274,6 @@ app.post('/api/auth/change-password', async (req, res) => {
       });
     }
 
-    /*
-    Cari akun
-    */
     const result = await pool.query(
       `
       SELECT id, username, password
@@ -295,9 +292,6 @@ app.post('/api/auth/change-password', async (req, res) => {
 
     const user = result.rows[0];
 
-    /*
-    Cek password lama
-    */
     const oldPasswordHash =
       hashPassword(oldPassword);
 
@@ -308,15 +302,9 @@ app.post('/api/auth/change-password', async (req, res) => {
       });
     }
 
-    /*
-    Hash password baru
-    */
     const newPasswordHash =
       hashPassword(newPassword);
 
-    /*
-    Update password
-    */
     await pool.query(
       `
       UPDATE users
@@ -408,24 +396,31 @@ app.post('/api/smart-bin', (req, res) => {
 SIMULATOR SMART BIN
 ========================================
 */
+
+// Data berubah setiap 10 detik
 setInterval(() => {
+
+  // Kepenuhan naik 5%
   smartBinData.fullness += 5;
+
+  // Berat naik mengikuti kepenuhan
   smartBinData.weight += 0.5;
 
+  // Jika sudah penuh, kembali ke kondisi awal
   if (smartBinData.fullness > 100) {
-    smartBinData.fullness = 100;
+    smartBinData.fullness = 0;
+    smartBinData.weight = 0;
   }
 
-  if (smartBinData.weight > 10) {
-    smartBinData.weight = 10;
-  }
-
+  // Status mengikuti tingkat kepenuhan
   if (smartBinData.fullness >= 90) {
     smartBinData.status =
       'HAMPIR PENUH - SEGERA DIANGKUT';
+
   } else if (smartBinData.fullness >= 75) {
     smartBinData.status =
       'DAPAT DIANGKUT';
+
   } else {
     smartBinData.status = 'NORMAL';
   }
@@ -434,7 +429,8 @@ setInterval(() => {
     'Simulator:',
     smartBinData
   );
-}, 5000);
+
+}, 10000);
 
 /*
 ========================================
