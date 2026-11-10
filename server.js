@@ -55,7 +55,7 @@ DATA SMART BIN
 let smartBinData = {
   id: 'SB-001',
   fullness: 50,
-  weight: 5.0,
+  weight: 50,
   status: 'NORMAL',
 };
 
@@ -403,11 +403,15 @@ setInterval(() => {
   // Kepenuhan naik 5%
   smartBinData.fullness += 5;
 
-  // Berat naik mengikuti kepenuhan
-  smartBinData.weight += 0.5;
+  // Berat naik 5 kg
+  smartBinData.weight += 5;
 
-  // Jika sudah penuh, kembali ke kondisi awal
-  if (smartBinData.fullness > 100) {
+  // Jika sudah mencapai 100% dan 100 kg,
+  // reset ke kondisi awal
+  if (
+    smartBinData.fullness >= 100 &&
+    smartBinData.weight >= 100
+  ) {
     smartBinData.fullness = 0;
     smartBinData.weight = 0;
   }
