@@ -24,7 +24,7 @@ const pool = new Pool({
 
 /*
 ========================================
-CEK KONEKSI DATABASE
+INISIALISASI DATABASE
 ========================================
 */
 async function initDatabase() {
@@ -61,7 +61,7 @@ let smartBinData = {
 
 /*
 ========================================
-FUNCTION HASH PASSWORD
+HASH PASSWORD
 ========================================
 */
 function hashPassword(password) {
@@ -105,9 +105,6 @@ app.post('/api/auth/register', async (req, res) => {
       });
     }
 
-    /*
-    Cek username yang sama
-    */
     const existingUser = await pool.query(
       `
       SELECT id
@@ -124,9 +121,6 @@ app.post('/api/auth/register', async (req, res) => {
       });
     }
 
-    /*
-    Buat akun baru
-    */
     const userId = crypto.randomUUID();
     const passwordHash = hashPassword(password);
 
@@ -193,9 +187,6 @@ app.post('/api/auth/login', async (req, res) => {
 
     const cleanUsername = username.trim();
 
-    /*
-    Cari akun berdasarkan username
-    */
     const result = await pool.query(
       `
       SELECT id, username, password
@@ -214,9 +205,6 @@ app.post('/api/auth/login', async (req, res) => {
 
     const user = result.rows[0];
 
-    /*
-    Cek password
-    */
     const passwordHash = hashPassword(password);
 
     if (passwordHash !== user.password) {
@@ -243,6 +231,117 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (error) {
     console.error(
       'LOGIN ERROR:',
+      error.message
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: 'Terjadi kesalahan pada server.',
+    });
+  }
+});
+
+/*
+========================================
+UBAH PASSWORD
+========================================
+POST /api/auth/change-password
+========================================
+*/
+app.post('/api/auth/change-password', async (req, res) => {
+  try {
+    const {
+      username,
+      oldPassword,
+      newPassword,
+    } = req.body;
+
+    if (
+      !username ||
+      !oldPassword ||
+      !newPassword
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: 'Data password belum lengkap.',
+      });
+    }
+
+    if (newPassword.length < 5) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password baru minimal 5 karakter.',
+      });
+    }
+
+    /*
+    Cari akun
+    */
+    const result = await pool.query(
+      `
+      SELECT id, username, password
+      FROM users
+      WHERE LOWER(username) = LOWER($1)
+      `,
+      [username.trim()]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Akun tidak ditemukan.',
+      });
+    }
+
+    const user = result.rows[0];
+
+    /*
+    Cek password lama
+    */
+    const oldPasswordHash =
+      hashPassword(oldPassword);
+
+    if (oldPasswordHash !== user.password) {
+      return res.status(401).json({
+        success: false,
+        message: 'Password lama salah.',
+      });
+    }
+
+    /*
+    Hash password baru
+    */
+    const newPasswordHash =
+      hashPassword(newPassword);
+
+    /*
+    Update password
+    */
+    await pool.query(
+      `
+      UPDATE users
+      SET password = $1
+      WHERE id = $2
+      `,
+      [
+        newPasswordHash,
+        user.id,
+      ]
+    );
+
+    console.log(
+      'PASSWORD BERHASIL DIUBAH:',
+      user.username
+    );
+
+    return res.json({
+      success: true,
+      message: 'Password berhasil diubah.',
+    });
+
+  } catch (error) {
+    console.error(
+      'CHANGE PASSWORD ERROR:',
       error.message
     );
 
