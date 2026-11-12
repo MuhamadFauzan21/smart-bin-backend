@@ -32,7 +32,7 @@ async function initDatabase() {
     await pool.query(`
       CREATE TABLE IF NOT EXISTS users (
         id UUID PRIMARY KEY,
-        username VARCHAR(100) NOT NULL UNIQUE,
+        email VARCHAR(255) NOT NULL UNIQUE,
         password TEXT NOT NULL
       );
     `);
@@ -80,21 +80,21 @@ POST /api/auth/register
 */
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { email, password } = req.body;
 
-    if (!username || !password) {
+    if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Username dan password harus diisi.',
+        message: 'Email dan password harus diisi.',
       });
     }
 
-    const cleanUsername = username.trim();
+    const cleanEmail = email.trim().toLowerCase();
 
-    if (cleanUsername.length < 3) {
+    if (!cleanEmail.includes('@')) {
       return res.status(400).json({
         success: false,
-        message: 'Username minimal 3 karakter.',
+        message: 'Format email tidak valid.',
       });
     }
 
@@ -109,15 +109,15 @@ app.post('/api/auth/register', async (req, res) => {
       `
       SELECT id
       FROM users
-      WHERE LOWER(username) = LOWER($1)
+      WHERE LOWER(email) = LOWER($1)
       `,
-      [cleanUsername]
+      [cleanEmail]
     );
 
     if (existingUser.rows.length > 0) {
       return res.status(409).json({
         success: false,
-        message: 'Username sudah digunakan.',
+        message: 'Email sudah terdaftar.',
       });
     }
 
@@ -128,21 +128,21 @@ app.post('/api/auth/register', async (req, res) => {
       `
       INSERT INTO users (
         id,
-        username,
+        email,
         password
       )
       VALUES ($1, $2, $3)
       `,
       [
         userId,
-        cleanUsername,
+        cleanEmail,
         passwordHash,
       ]
     );
 
     console.log('USER BARU:', {
       id: userId,
-      username: cleanUsername,
+      email: cleanEmail,
     });
 
     return res.status(201).json({
@@ -150,7 +150,7 @@ app.post('/api/auth/register', async (req, res) => {
       message: 'Akun berhasil dibuat.',
       user: {
         id: userId,
-        username: cleanUsername,
+        email: cleanEmail,
       },
     });
 
@@ -176,30 +176,30 @@ POST /api/auth/login
 */
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { username, password } = req.body;
+    const { email, password } = req.body;
 
-    if (!username || !password) {
+    if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Username dan password harus diisi.',
+        message: 'Email dan password harus diisi.',
       });
     }
 
-    const cleanUsername = username.trim();
+    const cleanEmail = email.trim().toLowerCase();
 
     const result = await pool.query(
       `
-      SELECT id, username, password
+      SELECT id, email, password
       FROM users
-      WHERE LOWER(username) = LOWER($1)
+      WHERE LOWER(email) = LOWER($1)
       `,
-      [cleanUsername]
+      [cleanEmail]
     );
 
     if (result.rows.length === 0) {
       return res.status(401).json({
         success: false,
-        message: 'Username atau password salah.',
+        message: 'Email atau password salah.',
       });
     }
 
@@ -210,13 +210,13 @@ app.post('/api/auth/login', async (req, res) => {
     if (passwordHash !== user.password) {
       return res.status(401).json({
         success: false,
-        message: 'Username atau password salah.',
+        message: 'Email atau password salah.',
       });
     }
 
     console.log(
       'LOGIN BERHASIL:',
-      user.username
+      user.email
     );
 
     return res.json({
@@ -224,7 +224,7 @@ app.post('/api/auth/login', async (req, res) => {
       message: 'Login berhasil.',
       user: {
         id: user.id,
-        username: user.username,
+        email: user.email,
       },
     });
 
@@ -251,13 +251,13 @@ POST /api/auth/change-password
 app.post('/api/auth/change-password', async (req, res) => {
   try {
     const {
-      username,
+      email,
       oldPassword,
       newPassword,
     } = req.body;
 
     if (
-      !username ||
+      !email ||
       !oldPassword ||
       !newPassword
     ) {
@@ -274,13 +274,15 @@ app.post('/api/auth/change-password', async (req, res) => {
       });
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+
     const result = await pool.query(
       `
-      SELECT id, username, password
+      SELECT id, email, password
       FROM users
-      WHERE LOWER(username) = LOWER($1)
+      WHERE LOWER(email) = LOWER($1)
       `,
-      [username.trim()]
+      [cleanEmail]
     );
 
     if (result.rows.length === 0) {
@@ -319,7 +321,7 @@ app.post('/api/auth/change-password', async (req, res) => {
 
     console.log(
       'PASSWORD BERHASIL DIUBAH:',
-      user.username
+      user.email
     );
 
     return res.json({
