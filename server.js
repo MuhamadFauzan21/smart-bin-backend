@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const crypto = require('crypto');
 const { Pool } = require('pg');
+const { Resend } = require('resend');
 
 const app = express();
 
@@ -15,6 +16,7 @@ app.use(express.json());
 KONEKSI POSTGRESQL
 ========================================
 */
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -22,11 +24,29 @@ const pool = new Pool({
   },
 });
 
+const resend = new Resend(
+  process.env.RESEND_API_KEY
+);
+
 /*
 ========================================
-INISIALISASI DATABASE
+HASH PASSWORD
 ========================================
 */
+
+function hashPassword(password) {
+  return crypto
+    .createHash('sha256')
+    .update(password)
+    .digest('hex');
+}
+
+/*
+========================================
+INIT DATABASE
+========================================
+*/
+
 async function initDatabase() {
   try {
     await pool.query(`
@@ -37,11 +57,10 @@ async function initDatabase() {
       );
     `);
 
-    console.log('PostgreSQL berhasil terhubung.');
-    console.log('Tabel users siap digunakan.');
+    console.log('DATABASE SIAP');
   } catch (error) {
     console.error(
-      'GAGAL TERHUBUNG KE POSTGRESQL:',
+      'DATABASE INIT ERROR:',
       error.message
     );
   }
@@ -49,38 +68,16 @@ async function initDatabase() {
 
 /*
 ========================================
-DATA SMART BIN
-========================================
-*/
-let smartBinData = {
-  id: 'SB-001',
-  fullness: 50,
-  weight: 50,
-  status: 'NORMAL',
-};
-
-/*
-========================================
-HASH PASSWORD
-========================================
-*/
-function hashPassword(password) {
-  return crypto
-    .createHash('sha256')
-    .update(password)
-    .digest('hex');
-}
-
-/*
-========================================
 REGISTER
 ========================================
-POST /api/auth/register
-========================================
 */
+
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const {
+      email,
+      password,
+    } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -89,12 +86,13 @@ app.post('/api/auth/register', async (req, res) => {
       });
     }
 
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail =
+      email.trim().toLowerCase();
 
     if (!cleanEmail.includes('@')) {
       return res.status(400).json({
         success: false,
-        message: 'Format email tidak valid.',
+        message: 'Email tidak valid.',
       });
     }
 
@@ -121,8 +119,11 @@ app.post('/api/auth/register', async (req, res) => {
       });
     }
 
-    const userId = crypto.randomUUID();
-    const passwordHash = hashPassword(password);
+    const userId =
+      crypto.randomUUID();
+
+    const passwordHash =
+      hashPassword(password);
 
     await pool.query(
       `
@@ -140,10 +141,10 @@ app.post('/api/auth/register', async (req, res) => {
       ]
     );
 
-    console.log('USER BARU:', {
-      id: userId,
-      email: cleanEmail,
-    });
+    console.log(
+      'USER BERHASIL DIBUAT:',
+      cleanEmail
+    );
 
     return res.status(201).json({
       success: true,
@@ -171,12 +172,14 @@ app.post('/api/auth/register', async (req, res) => {
 ========================================
 LOGIN
 ========================================
-POST /api/auth/login
-========================================
 */
+
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const {
+      email,
+      password,
+    } = req.body;
 
     if (!email || !password) {
       return res.status(400).json({
@@ -185,7 +188,8 @@ app.post('/api/auth/login', async (req, res) => {
       });
     }
 
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail =
+      email.trim().toLowerCase();
 
     const result = await pool.query(
       `
@@ -205,7 +209,8 @@ app.post('/api/auth/login', async (req, res) => {
 
     const user = result.rows[0];
 
-    const passwordHash = hashPassword(password);
+    const passwordHash =
+      hashPassword(password);
 
     if (passwordHash !== user.password) {
       return res.status(401).json({
@@ -243,11 +248,10 @@ app.post('/api/auth/login', async (req, res) => {
 
 /*
 ========================================
-UBAH PASSWORD
-========================================
-POST /api/auth/change-password
+CHANGE PASSWORD
 ========================================
 */
+
 app.post('/api/auth/change-password', async (req, res) => {
   try {
     const {
@@ -274,7 +278,8 @@ app.post('/api/auth/change-password', async (req, res) => {
       });
     }
 
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail =
+      email.trim().toLowerCase();
 
     const result = await pool.query(
       `
@@ -344,109 +349,258 @@ app.post('/api/auth/change-password', async (req, res) => {
 
 /*
 ========================================
-GET SMART BIN DATA
+FORGOT PASSWORD
 ========================================
 */
-app.get('/api/smart-bin', (req, res) => {
-  res.json(smartBinData);
-});
 
-/*
-========================================
-UPDATE SMART BIN DATA
-========================================
-*/
-app.post('/api/smart-bin', (req, res) => {
-  const {
-    id,
-    fullness,
-    weight,
-    status,
-  } = req.body;
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body;
 
-  if (
-    id === undefined ||
-    fullness === undefined ||
-    weight === undefined ||
-    status === undefined
-  ) {
-    return res.status(400).json({
-      message: 'Data Smart Bin tidak lengkap.',
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email harus diisi.',
+      });
+    }
+
+    const cleanEmail =
+      email.trim().toLowerCase();
+
+    const result = await pool.query(
+      `
+      SELECT id, email
+      FROM users
+      WHERE LOWER(email) = LOWER($1)
+      `,
+      [cleanEmail]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Email tidak terdaftar.',
+      });
+    }
+
+    /*
+    ========================================
+    KIRIM EMAIL RESET PASSWORD
+    ========================================
+    */
+
+    const { data, error } = await resend.emails.send({
+      from: 'Smart Bin <onboarding@resend.dev>',
+      to: [cleanEmail],
+      subject: 'Reset Password Smart Bin',
+      html: `
+        <div style="font-family: Arial, sans-serif;">
+          <h2>Reset Password Smart Bin</h2>
+
+          <p>
+            Kami menerima permintaan untuk mereset
+            password akun Smart Bin kamu.
+          </p>
+
+          <p>
+            Untuk melanjutkan proses reset password,
+            silakan gunakan fitur reset password
+            pada aplikasi Smart Bin.
+          </p>
+
+          <p>
+            Jika kamu tidak melakukan permintaan ini,
+            abaikan email ini.
+          </p>
+
+          <br>
+
+          <p>
+            Terima kasih,<br>
+            <strong>Smart Bin</strong>
+          </p>
+        </div>
+      `,
+    });
+
+    if (error) {
+      console.error(
+        'RESEND EMAIL ERROR:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message: 'Email reset password gagal dikirim.',
+      });
+    }
+
+    console.log(
+      'EMAIL RESET PASSWORD BERHASIL DIKIRIM:',
+      cleanEmail
+    );
+
+    console.log(
+      'RESEND EMAIL ID:',
+      data?.id
+    );
+
+    return res.json({
+      success: true,
+      message: 'Email reset password berhasil dikirim.',
+    });
+
+  } catch (error) {
+    console.error(
+      'DATABASE INIT ERROR:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: 'Terjadi kesalahan pada server.',
     });
   }
-
-  smartBinData = {
-    id,
-    fullness: Number(fullness),
-    weight: Number(weight),
-    status,
-  };
-
-  console.log(
-    'Data Smart Bin diperbarui:',
-    smartBinData
-  );
-
-  return res.json({
-    message: 'Data Smart Bin berhasil diperbarui.',
-    data: smartBinData,
-  });
 });
 
 /*
 ========================================
-SIMULATOR SMART BIN
+SMART BIN
 ========================================
 */
 
-// Data berubah setiap 10 detik
-setInterval(() => {
+app.get('/api/smartbin', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT *
+      FROM smart_bins
+      ORDER BY created_at DESC
+    `);
 
-  // Kepenuhan naik 5%
-  smartBinData.fullness += 5;
+    return res.json({
+      success: true,
+      data: result.rows,
+    });
 
-  // Berat naik 5 kg
-  smartBinData.weight += 5;
+  } catch (error) {
+    console.error(
+      'GET SMART BIN ERROR:',
+      error.message
+    );
 
-  // Jika sudah mencapai 100% dan 100 kg,
-  // reset ke kondisi awal
-  if (
-    smartBinData.fullness >= 100 &&
-    smartBinData.weight >= 100
-  ) {
-    smartBinData.fullness = 0;
-    smartBinData.weight = 0;
+    return res.status(500).json({
+      success: false,
+      message: 'Gagal mengambil data Smart Bin.',
+    });
   }
+});
 
-  // Status mengikuti tingkat kepenuhan
-  if (smartBinData.fullness >= 90) {
-    smartBinData.status =
-      'HAMPIR PENUH - SEGERA DIANGKUT';
+app.post('/api/smartbin', async (req, res) => {
+  try {
+    const {
+      bin_id,
+      fullness,
+      weight,
+      status,
+    } = req.body;
 
-  } else if (smartBinData.fullness >= 75) {
-    smartBinData.status =
-      'DAPAT DIANGKUT';
+    const result = await pool.query(
+      `
+      INSERT INTO smart_bins (
+        bin_id,
+        fullness,
+        weight,
+        status
+      )
+      VALUES ($1, $2, $3, $4)
+      RETURNING *
+      `,
+      [
+        bin_id,
+        fullness,
+        weight,
+        status,
+      ]
+    );
 
-  } else {
-    smartBinData.status = 'NORMAL';
+    return res.status(201).json({
+      success: true,
+      data: result.rows[0],
+    });
+
+  } catch (error) {
+    console.error(
+      'POST SMART BIN ERROR:',
+      error.message
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: 'Gagal menyimpan data Smart Bin.',
+    });
   }
+});
 
-  console.log(
-    'Simulator:',
-    smartBinData
-  );
+/*
+========================================
+SIMULATOR
+========================================
+*/
 
-}, 10000);
+app.post('/api/simulator', async (req, res) => {
+  try {
+    const {
+      bin_id,
+      fullness,
+      weight,
+      status,
+    } = req.body;
+
+    console.log(
+      'SIMULATOR DATA:',
+      {
+        bin_id,
+        fullness,
+        weight,
+        status,
+      }
+    );
+
+    return res.json({
+      success: true,
+      message: 'Data simulator diterima.',
+    });
+
+  } catch (error) {
+    console.error(
+      'SIMULATOR ERROR:',
+      error.message
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: 'Terjadi kesalahan pada server.',
+    });
+  }
+});
 
 /*
 ========================================
 START SERVER
 ========================================
 */
-app.listen(PORT, '0.0.0.0', async () => {
-  console.log(
-    `Smart Bin API berjalan di port ${PORT}`
-  );
 
-  await initDatabase();
-});
+initDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(
+        `SERVER BERJALAN DI PORT ${PORT}`
+      );
+    });
+  })
+  .catch((error) => {
+    console.error(
+      'SERVER GAGAL DIJALANKAN:',
+      error.message
+    );
+  });
